@@ -1,6 +1,8 @@
 import asyncio
 from dotenv import load_dotenv
 import os
+import pyperclip
+import winsound
 from deepgram import (
     DeepgramClient,
     DeepgramClientOptions,
@@ -26,6 +28,9 @@ class TranscriptCollector:
 
 transcript_collector = TranscriptCollector()
 
+def play_sound():
+    winsound.PlaySound("*", winsound.SND_ALIAS)
+
 async def get_transcript():
     try:
         config = DeepgramClientOptions(options={"keepalive": "true"})
@@ -45,6 +50,8 @@ async def get_transcript():
                 if len(full_sentence.strip()) > 0:
                     full_sentence = full_sentence.strip()
                     print(f"Transcription: {full_sentence}")
+                    pyperclip.copy(full_sentence)
+                    play_sound()
                     transcript_collector.reset()
 
         dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
