@@ -3,3 +3,4 @@ deepgram-sdk
 pyaudio
 pyperclip
 pygame
+customtkinter

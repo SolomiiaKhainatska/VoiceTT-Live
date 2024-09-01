@@ -7,6 +7,8 @@ import pyperclip
 import pygame
 import customtkinter as ctk
 import threading
+import certifi
+import ssl
 from deepgram import (
     DeepgramClient,
     DeepgramClientOptions,
@@ -16,6 +18,10 @@ from deepgram import (
 )
 
 load_dotenv()
+
+# Налаштування SSL для macOS
+ssl_context = ssl.create_default_context(cafile=certifi.where())
+os.environ['SSL_CERT_FILE'] = certifi.where()
 
 pygame.mixer.init()
 
@@ -79,7 +85,7 @@ class Application(ctk.CTk):
 async def get_transcript(app):
     try:
         config = DeepgramClientOptions(options={"keepalive": "true"})
-        deepgram: DeepgramClient = DeepgramClient(os.getenv("DEEPGRAM_API_KEY"), config)
+        deepgram = DeepgramClient(os.getenv("DEEPGRAM_API_KEY"), config)
 
         dg_connection = deepgram.listen.asyncwebsocket.v("1")
 
@@ -124,8 +130,10 @@ async def get_transcript(app):
     except Exception as e:
         app.update_transcript(f"Error: {e}")
     finally:
-        microphone.finish()
-        await dg_connection.finish()
+        if 'microphone' in locals():
+            microphone.finish()
+        if 'dg_connection' in locals():
+            await dg_connection.finish()
 
 if __name__ == "__main__":
     app = Application()
