@@ -2,3 +2,4 @@ python-dotenv
 deepgram-sdk
 pyaudio
 pyperclip
+pygame

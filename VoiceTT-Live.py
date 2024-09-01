@@ -1,8 +1,11 @@
+import os
+# Приховування повідомлень pygame
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
+
 import asyncio
 from dotenv import load_dotenv
-import os
 import pyperclip
-import winsound
+import pygame
 from deepgram import (
     DeepgramClient,
     DeepgramClientOptions,
@@ -12,6 +15,9 @@ from deepgram import (
 )
 
 load_dotenv()
+
+# Ініціалізація pygame для відтворення звуку
+pygame.mixer.init()
 
 class TranscriptCollector:
     def __init__(self):
@@ -29,7 +35,12 @@ class TranscriptCollector:
 transcript_collector = TranscriptCollector()
 
 def play_sound():
-    winsound.PlaySound("*", winsound.SND_ALIAS)
+    sound_file = "notification-clicking-joshua-chivers-1-1-00-00.mp3"
+    try:
+        pygame.mixer.music.load(sound_file)
+        pygame.mixer.music.play()
+    except Exception as e:
+        print(f"Не вдалося відтворити звук: {e}")
 
 async def get_transcript():
     try:
@@ -37,7 +48,6 @@ async def get_transcript():
         deepgram: DeepgramClient = DeepgramClient("", config)
 
         dg_connection = deepgram.listen.asyncwebsocket.v("1")
-        print("Listening...")
 
         async def on_message(self, result, **kwargs):
             sentence = result.channel.alternatives[0].transcript
@@ -49,7 +59,7 @@ async def get_transcript():
                 full_sentence = transcript_collector.get_full_transcript()
                 if len(full_sentence.strip()) > 0:
                     full_sentence = full_sentence.strip()
-                    print(f"Transcription: {full_sentence}")
+                    print(f"{full_sentence}")
                     pyperclip.copy(full_sentence)
                     play_sound()
                     transcript_collector.reset()
@@ -72,6 +82,8 @@ async def get_transcript():
         microphone = Microphone(dg_connection.send)
         microphone.start()
 
+        print("Listening...")
+
         # Keep the connection open indefinitely
         while True:
             await asyncio.sleep(1)
@@ -83,4 +95,7 @@ async def get_transcript():
         await dg_connection.finish()
 
 if __name__ == "__main__":
+    # Вимкнення виведення для pygame
+    pygame.mixer.set_num_channels(0)
+    
     asyncio.run(get_transcript())
