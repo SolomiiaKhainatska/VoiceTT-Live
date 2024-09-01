@@ -5,10 +5,8 @@ import asyncio
 from dotenv import load_dotenv
 import pyperclip
 import pygame
-import tkinter as tk
-from tkinter import scrolledtext
+import customtkinter as ctk
 import threading
-from datetime import datetime
 from deepgram import (
     DeepgramClient,
     DeepgramClientOptions,
@@ -46,49 +44,42 @@ def play_sound():
     except Exception as e:
         print(f"Не вдалося відтворити звук: {e}")
 
-class Application(tk.Tk):
+class Application(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("VoiceTT-Live Transcription")
         self.geometry("600x400")
         
-        self.text_area = scrolledtext.ScrolledText(self, wrap=tk.WORD, width=70, height=20)
-        self.text_area.pack(padx=10, pady=10, expand=True, fill=tk.BOTH)
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("green")
         
-        self.start_button = tk.Button(self, text="Start Transcription", command=self.start_transcription)
-        self.start_button.pack(pady=10)
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        
+        self.text_area = ctk.CTkTextbox(self, wrap="word", font=("Arial", 14))
+        self.text_area.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        
+        self.start_transcription()
         
     def start_transcription(self):
-        self.start_button.config(state=tk.DISABLED)
-        self.write_session_start()
         threading.Thread(target=self.run_transcription, daemon=True).start()
         
     def run_transcription(self):
         asyncio.run(get_transcript(self))
         
     def update_transcript(self, text):
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        formatted_text = f"[{timestamp}] {text}"
-        self.text_area.insert(tk.END, formatted_text + "\n")
-        self.text_area.see(tk.END)
-        self.write_to_file(formatted_text)
-        
-    def write_session_start(self):
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        session_start = f"\n--- Нова сесія розпочата {timestamp} ---\n"
-        with open(TRANSCRIPT_FILE, "a", encoding="utf-8") as file:
-            file.write(session_start)
-        self.text_area.insert(tk.END, session_start)
-        self.text_area.see(tk.END)
+        self.text_area.insert("end", text + "\n\n")
+        self.text_area.see("end")
+        self.write_to_file(text)
         
     def write_to_file(self, text):
         with open(TRANSCRIPT_FILE, "a", encoding="utf-8") as file:
-            file.write(text + "\n")
+            file.write(text + "\n\n")
 
 async def get_transcript(app):
     try:
         config = DeepgramClientOptions(options={"keepalive": "true"})
-        deepgram: DeepgramClient = DeepgramClient("", config)
+        deepgram: DeepgramClient = DeepgramClient(os.getenv("DEEPGRAM_API_KEY"), config)
 
         dg_connection = deepgram.listen.asyncwebsocket.v("1")
 
