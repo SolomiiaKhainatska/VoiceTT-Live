@@ -7,15 +7,38 @@ import pyperclip
 import pygame
 import customtkinter as ctk
 import threading
+import logging
 from deepgram import (
     DeepgramClient,
     DeepgramClientOptions,
     LiveTranscriptionEvents,
     LiveOptions,
     Microphone,
+    LiveResultResponse,
 )
 
 load_dotenv()
+
+# Налаштування логування
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Налаштування файлового логування для детального відстеження
+file_handler = logging.FileHandler("voicett_live.log")
+file_handler.setLevel(logging.DEBUG)
+file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(file_formatter)
+logger.addHandler(file_handler)
+
+# Налаштування обробки помилок
+def log_exceptions(func):
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            logger.exception(f"Виникла помилка в {func.__name__}: {str(e)}")
+            raise
+    return wrapper
 
 pygame.mixer.init()
 
@@ -27,9 +50,16 @@ class TranscriptCollector:
 
     def reset(self):
         self.transcript_parts = []
+        self.last_part = ""
 
     def add_part(self, part):
-        self.transcript_parts.append(part)
+        # Видаляємо повторення на початку нової частини
+        if self.last_part and part.startswith(self.last_part):
+            part = part[len(self.last_part):].strip()
+        
+        if part:
+            self.transcript_parts.append(part)
+            self.last_part = part
 
     def get_full_transcript(self):
         return ' '.join(self.transcript_parts)
@@ -76,27 +106,39 @@ class Application(ctk.CTk):
         with open(TRANSCRIPT_FILE, "a", encoding="utf-8") as file:
             file.write(text + "\n\n")
 
+@log_exceptions
 async def get_transcript(app):
+    microphone = None
+    dg_connection = None
     try:
+        logger.info("Починаємо процес транскрипції")
         config = DeepgramClientOptions(options={"keepalive": "true"})
         deepgram: DeepgramClient = DeepgramClient(os.getenv("DEEPGRAM_API_KEY"), config)
+        logger.debug("Deepgram клієнт створено")
 
         dg_connection = deepgram.listen.asyncwebsocket.v("1")
+        logger.debug("WebSocket з'єднання встановлено")
 
-        async def on_message(self, result, **kwargs):
-            sentence = result.channel.alternatives[0].transcript
-            
-            if not result.speech_final:
-                transcript_collector.add_part(sentence)
-            else:
-                transcript_collector.add_part(sentence)
-                full_sentence = transcript_collector.get_full_transcript()
-                if len(full_sentence.strip()) > 0:
-                    full_sentence = full_sentence.strip()
-                    app.update_transcript(full_sentence)
-                    pyperclip.copy(full_sentence)
-                    play_sound()
-                    transcript_collector.reset()
+        @log_exceptions
+        async def on_message(self, result):
+            if not isinstance(result, LiveResultResponse):
+                return
+
+            if result.type == "Results" and result.channel.alternatives:
+                sentence = result.channel.alternatives[0].transcript
+                if not result.speech_final:
+                    transcript_collector.add_part(sentence)
+                    logger.debug(f"Проміжна транскрипція: {sentence}")
+                else:
+                    transcript_collector.add_part(sentence)
+                    full_sentence = transcript_collector.get_full_transcript()
+                    if len(full_sentence.strip()) > 0:
+                        full_sentence = full_sentence.strip()
+                        logger.info(f"Фінальна транскрипція: {full_sentence}")
+                        app.update_transcript(full_sentence)
+                        pyperclip.copy(full_sentence)
+                        play_sound()
+                        transcript_collector.reset()
 
         dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
 
@@ -107,7 +149,7 @@ async def get_transcript(app):
             encoding="linear16",
             channels=1,
             sample_rate=16000,
-            endpointing=300,
+            endpointing=800,
             smart_format=True,
         )
 
@@ -116,7 +158,7 @@ async def get_transcript(app):
         microphone = Microphone(dg_connection.send)
         microphone.start()
 
-        app.update_transcript("Listening...")
+        logger.info("Listening...")
 
         while True:
             await asyncio.sleep(1)
@@ -124,8 +166,10 @@ async def get_transcript(app):
     except Exception as e:
         app.update_transcript(f"Error: {e}")
     finally:
-        microphone.finish()
-        await dg_connection.finish()
+        if microphone:
+            microphone.finish()
+        if dg_connection:
+            await dg_connection.finish()
 
 if __name__ == "__main__":
     app = Application()
