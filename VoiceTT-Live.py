@@ -7,7 +7,6 @@ import pyperclip
 import pygame
 import customtkinter as ctk
 import threading
-import logging
 from deepgram import (
     DeepgramClient,
     DeepgramClientOptions,
@@ -18,6 +17,10 @@ from deepgram import (
 )
 
 load_dotenv()
+
+# Налаштування SSL для macOS
+ssl_context = ssl.create_default_context(cafile=certifi.where())
+os.environ['SSL_CERT_FILE'] = certifi.where()
 
 # Налаштування логування
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -114,7 +117,6 @@ async def get_transcript(app):
         logger.info("Починаємо процес транскрипції")
         config = DeepgramClientOptions(options={"keepalive": "true"})
         deepgram: DeepgramClient = DeepgramClient(os.getenv("DEEPGRAM_API_KEY"), config)
-        logger.debug("Deepgram клієнт створено")
 
         dg_connection = deepgram.listen.asyncwebsocket.v("1")
         logger.debug("WebSocket з'єднання встановлено")
@@ -166,10 +168,8 @@ async def get_transcript(app):
     except Exception as e:
         app.update_transcript(f"Error: {e}")
     finally:
-        if microphone:
-            microphone.finish()
-        if dg_connection:
-            await dg_connection.finish()
+        microphone.finish()
+        await dg_connection.finish()
 
 if __name__ == "__main__":
     app = Application()
